@@ -2,6 +2,7 @@
 # coding: utf-8
 
 import pandas as pd
+import click
 
 # ## Install SQLAlchemy
 from sqlalchemy import create_engine
@@ -38,19 +39,19 @@ parse_dates = [
 # ## Ingesting Data in Chunks : ##
 # ** We don't want to insert all the data at once. Let's do it in batches (size of 100000) and use an iterator for that **
 
-def run():
-    pg_user = 'root'
-    pg_password = 'root'
-    pg_host = 'localhost'
-    pg_port = 5432
-    pg_database = 'ny_taxi'
-    
-    year = 2021
-    month = 1
-
-    table_name = 'yellow_taxi_data'
-
-    chunksize = 100000
+@click.command()
+@click.option('--pg-user', default='root', show_default=True, help='Postgres user')
+@click.option('--pg-password', default='root', show_default=True, help='Postgres password')
+@click.option('--pg-host', default='localhost', show_default=True, help='Postgres host')
+@click.option('--pg-port', default=5432, show_default=True, type=int, help='Postgres port')
+@click.option('--pg-database', default='ny_taxi', show_default=True, help='Postgres database name')
+@click.option('--year', default=2021, show_default=True, type=int, help='Year of the dataset')
+@click.option('--month', default=1, show_default=True, type=int, help='Month of the dataset (1-12)')
+@click.option('--table_name', default='yellow_taxi_data', show_default=True, help='table name')
+@click.option('--chunksize', default=100000, show_default=True, type=int, help='CSV chunksize for ingestion')
+def run(pg_user, pg_password, pg_host, pg_port, pg_database, year, month, table_name, chunksize):
+    if not (1 <= month <= 12):
+        raise click.BadParameter('month doit être entre 1 et 12')
 
     # ## Create Database Connection
     prefix = 'https://github.com/DataTalksClub/nyc-tlc-data/releases/download/yellow/' 

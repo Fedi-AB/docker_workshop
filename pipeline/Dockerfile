@@ -18,7 +18,7 @@ COPY "pyproject.toml" "uv.lock" ".python-version" ./
 RUN uv sync --locked
 
 # Copy the current directory contents into the container at /app
-COPY pipeline.py .
+COPY ingest_data.py .
 
 # Define the command to run the pipeline script when the container starts
-ENTRYPOINT [ "python", "pipeline.py"]
+ENTRYPOINT [ "python", "ingest_data.py"]
