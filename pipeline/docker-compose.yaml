@@ -1,18 +1,36 @@
+version: "3.9"
+
+volumes:
+  ny_taxi_postgres_data:
+  kestra_postgres_data:
+  kestra_data:
+  kestra_tmp:
+
 services:
+
+  # =====================================================================
+  # PostgreSQL - NY Taxi database for storing the raw and processed data
+  # =====================================================================
   postgres:
-    image: postgres:18
-    container_name: pgdatabase
+    image: postgres:15
+    container_name: ny_taxi_postgres
     environment:
       POSTGRES_USER: root
       POSTGRES_PASSWORD: root
       POSTGRES_DB: ny_taxi
-    volumes:
-      - ny_taxi_postgres_data:/var/lib/postgresql
     ports:
       - "5432:5432"
-    networks:
-      - pg-network
+    volumes:
+      - ny_taxi_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d ny_taxi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # =====================================================
+  # pgAdmin for managing the NY Taxi PostgreSQL database
+  # =====================================================
   pgadmin:
     image: dpage/pgadmin4
     container_name: pgadmin
@@ -22,13 +40,73 @@ services:
     ports:
       - "8085:80"
     depends_on:
-      - postgres
-    networks:
-      - pg-network
+      postgres:
+        condition: service_healthy
 
-networks:
-  pg-network:
-    driver: bridge
+  # ======================================================
+  # PostgreSQL for Kestra
+  # ======================================================
+  kestra_postgres:
+    image: postgres:15
+    container_name: kestra_postgres
+    environment:
+      POSTGRES_DB: kestra
+      POSTGRES_USER: kestra
+      POSTGRES_PASSWORD: k3str4
+    volumes:
+      - kestra_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kestra -d kestra"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-volumes:
-  ny_taxi_postgres_data:
+  # =========================
+  # Kestra OSS Server
+  # =========================
+  kestra:
+    image: kestra/kestra:v1.1
+    container_name: kestra
+    command: server standalone
+    user: "root"
+
+    ports:
+      - "8080:8080"
+
+    volumes:
+      - kestra_data:/app/storage
+      - kestra_tmp:/tmp/kestra-wd
+      - /var/run/docker.sock:/var/run/docker.sock
+
+      # GCP Service Account credentials for Kestra to access GCP resources (e.g. Cloud Storage, BigQuery, etc.)
+      - ./secret/gcp-creds.json:/secrets/gcp-creds.json:ro
+
+    environment:
+      # Google Official Method to set credentials for applications using Google Cloud Client Libraries
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-creds.json
+
+      KESTRA_CONFIGURATION: |
+        datasources:
+          postgres:
+            url: jdbc:postgresql://kestra_postgres:5432/kestra
+            driverClassName: org.postgresql.Driver
+            username: kestra
+            password: k3str4
+
+        kestra:
+          repository:
+            type: postgres
+          queue:
+            type: postgres
+          storage:
+            type: local
+            local:
+              basePath: "/app/storage"
+          tasks:
+            tmpDir:
+              path: /tmp/kestra-wd/tmp
+          url: http://localhost:8080/
+
+    depends_on:
+      kestra_postgres:
+        condition: service_healthy

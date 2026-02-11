@@ -16,11 +16,11 @@ variable "zone" {
 }
 
 variable "bucket_name" {
-  description = "Nom du bucket GCS"
+  description = "Nom du bucket GCS (Data Lake)"
   type        = string
 }
 
 variable "bq_dataset_id" {
-  description = "BigQuery Dataset ID"
+  description = "BigQuery Dataset ID (Analytics)"
   type        = string
 }
