@@ -1,0 +1,34 @@
+id: Google_Cloud_Platform_Destroy
+namespace: zoomcamp
+description: |
+  Suppression de l'infrastructure GCP créée par le flow
+  Google_Cloud_Platform_Setup
+
+tasks:
+
+  # =====================================================
+  # 1. Dataset BigQuery Deleting
+  # =====================================================
+  - id: delete_bq_dataset
+    type: io.kestra.plugin.gcp.bigquery.DeleteDataset
+    name: "{{kv('GCP_DATASET')}}"
+    deleteContents: true
+    allowFailure: true
+
+  # =====================================================
+  # 2. Bucket GCS Deleting
+  # =====================================================
+  - id: delete_gcs_bucket
+    type: io.kestra.plugin.gcp.gcs.DeleteBucket
+    name: "{{kv('GCP_BUCKET_NAME')}}"
+    allowFailure: true
+
+# =====================================================
+# Commun Configuration with GCP plugins 
+# =====================================================
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+      bucket: "{{kv('GCP_BUCKET_NAME')}}"

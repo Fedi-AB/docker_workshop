@@ -1,0 +1,31 @@
+id: Google_Cloud_Platform_Setup
+namespace: zoomcamp
+
+tasks:
+
+  # =====================================================
+  # 1. Bucket Google Cloud Storage (GCS) Creation
+  # =====================================================
+  - id: create_gcs_bucket
+    type: io.kestra.plugin.gcp.gcs.CreateBucket
+    ifExists: SKIP
+    storageClass: REGIONAL
+    name: "{{kv('GCP_BUCKET_NAME')}}"
+
+  # =====================================================
+  # 2. Dataset BigQuery Creation
+  # =====================================================
+  - id: create_bq_dataset
+    type: io.kestra.plugin.gcp.bigquery.CreateDataset
+    name: "{{kv('GCP_DATASET')}}"
+    ifExists: SKIP
+
+# =====================================================
+# Commun Configuration with GCP plugins 
+# =====================================================
+pluginDefaults:
+  - type: io.kestra.plugin.gcp
+    values:
+      projectId: "{{kv('GCP_PROJECT_ID')}}"
+      location: "{{kv('GCP_LOCATION')}}"
+      bucket: "{{kv('GCP_BUCKET_NAME')}}"
