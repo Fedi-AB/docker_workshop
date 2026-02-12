@@ -1,0 +1,18 @@
+id: Empty_GCS_Bucket
+namespace: zoomcamp
+
+description: |
+  Delete all objects inside a Google Cloud Storage bucket
+  without deleting the bucket itself.
+
+tasks:
+  - id: delete_all_objects
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - echo "Deleting all objects in bucket..."
+      - gcloud storage rm -r gs://{{kv('GCP_BUCKET_NAME')}}/**
+
+  - id: purge_execution_files
+    type: io.kestra.plugin.core.storage.PurgeCurrentExecutionFiles
