@@ -106,6 +106,17 @@ services:
             tmpDir:
               path: /tmp/kestra-wd/tmp
           url: http://localhost:8080/
+        
+
+          # ===========================================================
+          # Gemini AI configuration for enabling AI features in Kestra
+          # This allows Kestra to use Google Gemini models via API key
+          # ===========================================================
+          ai:
+            type: gemini
+            gemini:
+              model-name: gemini-2.5-flash
+              api-key: ${GEMINI_API_KEY}
 
     depends_on:
       kestra_postgres:
