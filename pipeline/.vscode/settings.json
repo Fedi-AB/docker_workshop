@@ -1,4 +1,0 @@
-{
-  "python.defaultInterpreterPath": "/workspaces/docker_workshop/pipeline/.venv/bin/python",
-  "jupyter.jupyterServerType": "local"
-}
