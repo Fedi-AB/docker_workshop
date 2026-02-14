@@ -225,3 +225,11 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 source/
+
+# Raw data
+analytics_engineering/taxi_rides_ny/data/
+analytics_engineering/venv/
+analytics_engineering/target/
+analytics_engineering/dbt_packages/
+analytics_engineering/*.duckdb
+*.duckdb
