@@ -2,6 +2,9 @@
 # Terraform
 #################################
 
+*.json
+secret/
+
 # Terraform working directory
 .terraform/
 
