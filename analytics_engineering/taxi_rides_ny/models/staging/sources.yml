@@ -1,0 +1,19 @@
+version: 2
+
+sources:
+  # Define the source for the raw data
+  - name: raw_data
+    description: "Raw data sources for NYC taxi rides."
+
+    # Define the database and schema where the raw data is stored
+    database: taxi_rides_ny # for bigquery, this should be the Project ID
+
+    schema: prod # for bigquery, this should be the Dataset name
+    
+    tables:
+      - name: yellow_tripdata
+        description: "Raw data for yellow taxi rides in NYC."
+      - name: green_tripdata
+        description: "Raw data for green taxi rides in NYC."
+
+
