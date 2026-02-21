@@ -24,7 +24,7 @@ def download_and_convert_files(taxi_type):
     data_dir.mkdir(exist_ok=True, parents=True)
 
     # Loop through years 2019 and 2020
-    for year in [2019, 2020]:
+    for year in [2019]:
         # Loop through all 12 months
         for month in range(1, 13):
 
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     update_gitignore()
 
     # Download and convert files for both yellow and green taxis
-    for taxi_type in ["yellow", "green"]:
+    for taxi_type in ["fhv"]:
         download_and_convert_files(taxi_type)
 
     # Create or connect to local DuckDB database file
@@ -112,7 +112,7 @@ if __name__ == "__main__":
 
     # For each taxi type, create a table in DuckDB
     # by reading all corresponding Parquet files
-    for taxi_type in ["yellow", "green"]:
+    for taxi_type in ["fhv"]:
         con.execute(f"""
             CREATE OR REPLACE TABLE prod.{taxi_type}_tripdata AS
             SELECT * FROM read_parquet('data/{taxi_type}/*.parquet', union_by_name=true)

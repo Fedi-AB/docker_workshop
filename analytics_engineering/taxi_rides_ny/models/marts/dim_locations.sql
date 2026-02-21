@@ -10,8 +10,7 @@ WITH dim_locations AS (
         {{ ref('taxi_zone_lookup')}}
 )
 
-SELECT 
-    * 
+SELECT
+    *
 FROM 
     dim_locations
-

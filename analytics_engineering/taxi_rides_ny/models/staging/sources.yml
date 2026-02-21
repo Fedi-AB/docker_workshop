@@ -9,11 +9,14 @@ sources:
     database: taxi_rides_ny # for bigquery, this should be the Project ID
 
     schema: prod # for bigquery, this should be the Dataset name
-    
+
     tables:
       - name: yellow_tripdata
         description: "Raw data for yellow taxi rides in NYC."
       - name: green_tripdata
         description: "Raw data for green taxi rides in NYC."
+      - name: fhv_tripdata
+        description: "Raw data for fhv taxi rides in NYC."
+
 
 

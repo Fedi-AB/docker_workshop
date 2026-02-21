@@ -44,4 +44,5 @@ SELECT
 FROM {{ source('raw_data', 'green_tripdata')}}
 
 -- Exclude nulls IDs for vendorID, as they are required for analysis
-WHERE vendorID IS NOT NULL
+WHERE vendorID IS NOT NULL AND (lpep_pickup_datetime >= '2019-01-01'
+  AND lpep_pickup_datetime < '2021-01-01')
