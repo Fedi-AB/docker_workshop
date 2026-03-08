@@ -16,8 +16,6 @@ materialization:
 import os
 import json
 import pandas as pd
-import requests
-from io import BytesIO
 from datetime import datetime, timezone
 
 
@@ -73,34 +71,22 @@ def materialize():
     ]
 
     # -----------------------------------------------------------
-    # HTTP headers to prevent CloudFront 403 errors
-    # -----------------------------------------------------------
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; BruinPipeline/1.0)",
-        "Accept": "*/*"
-    }
-
-    # -----------------------------------------------------------
-    # Iterate through each taxi dataset (green, yellow, fhv)
+    # Iterate through each taxi dataset
     # -----------------------------------------------------------
 
     for taxi_type in taxi_types:
 
-        url = f"https://d37ci6vzurychx.cloudfront.net/trip-data/{taxi_type}_tripdata_{year}-{month:02d}.parquet"
+        url = f"https://nyc-tlc.s3.amazonaws.com/trip+data/{taxi_type}_tripdata_{year}-{month:02d}.parquet"
+
         print(f"Fetching: {url}")
 
         # -----------------------------------------------------------
-        # Download dataset using requests
-        # This avoids CloudFront restrictions in cloud environments
+        # Load parquet dataset directly from S3
         # -----------------------------------------------------------
 
         try:
 
-            response = requests.get(url, headers=headers, timeout=120)
-            response.raise_for_status()
-
-            df = pd.read_parquet(BytesIO(response.content))
+            df = pd.read_parquet(url)
 
         except Exception as e:
 
@@ -148,7 +134,6 @@ def materialize():
 
         # -----------------------------------------------------------
         # Ensure all canonical columns exist
-        # Missing columns are added as NULL
         # -----------------------------------------------------------
 
         for col in canonical_columns:
@@ -169,7 +154,7 @@ def materialize():
         df = df[canonical_columns]
 
         # -----------------------------------------------------------
-        # Normalize datatypes for analytics compatibility
+        # Normalize datatypes
         # -----------------------------------------------------------
 
         df["pickup_datetime"] = pd.to_datetime(df["pickup_datetime"], errors="coerce")
@@ -204,15 +189,13 @@ def materialize():
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
         # -----------------------------------------------------------
-        # Remove rows where the incremental key is null
-        # Required for delete+insert incremental strategy
+        # Remove rows where incremental key is NULL
         # -----------------------------------------------------------
 
         df = df[df["pickup_datetime"].notna()]
 
         # -----------------------------------------------------------
         # Data quality filters
-        # Keep only trips within the ingestion month
         # -----------------------------------------------------------
 
         month_start = pd.Timestamp(year=year, month=month, day=1)
@@ -227,17 +210,15 @@ def materialize():
             & (df["pickup_datetime"] < month_end)
         ]
 
-        # Remove trips with invalid timestamps
         df = df[df["dropoff_datetime"] >= df["pickup_datetime"]]
 
-        # Remove negative trip distances
         if "trip_distance" in df.columns:
             df = df[df["trip_distance"].isna() | (df["trip_distance"] >= 0)]
 
         dataframes.append(df)
 
     # -----------------------------------------------------------
-    # Safety check if no dataset could be downloaded
+    # Safety check if no dataset was loaded
     # -----------------------------------------------------------
 
     if not dataframes:
@@ -247,7 +228,7 @@ def materialize():
         )
 
     # -----------------------------------------------------------
-    # Concatenate all datasets into one dataframe
+    # Concatenate all datasets
     # -----------------------------------------------------------
 
     result = pd.concat(dataframes, ignore_index=True)
