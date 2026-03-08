@@ -54,7 +54,11 @@ def materialize():
         "dispatching_base_num",
         "affiliated_base_number",
         "sr_flag",
+        "taxi_type",
+        "extracted_at",
     ]
+
+    headers = {"User-Agent": "Mozilla/5.0"}
 
     for taxi_type in taxi_types:
 
@@ -62,9 +66,12 @@ def materialize():
         print(f"Fetching: {url}")
 
         try:
-            df = pd.read_parquet(url)
+            df = pd.read_parquet(
+                url,
+                storage_options=headers
+            )
         except Exception as e:
-            print(f"Error loading {url}")
+            print(f"Failed loading {url}")
             print(e)
             continue
 
@@ -115,6 +122,13 @@ def materialize():
                 df[col] = None
 
         # -----------------------
+        # Metadata
+        # -----------------------
+
+        df["taxi_type"] = taxi_type
+        df["extracted_at"] = datetime.now(timezone.utc)
+
+        # -----------------------
         # Select canonical schema
         # -----------------------
 
@@ -127,8 +141,13 @@ def materialize():
         df["pickup_datetime"] = pd.to_datetime(df["pickup_datetime"], errors="coerce")
         df["dropoff_datetime"] = pd.to_datetime(df["dropoff_datetime"], errors="coerce")
 
-        df["pickup_location_id"] = pd.to_numeric(df["pickup_location_id"], errors="coerce").astype("Int64")
-        df["dropoff_location_id"] = pd.to_numeric(df["dropoff_location_id"], errors="coerce").astype("Int64")
+        df["pickup_location_id"] = pd.to_numeric(
+            df["pickup_location_id"], errors="coerce"
+        ).astype("Int64")
+
+        df["dropoff_location_id"] = pd.to_numeric(
+            df["dropoff_location_id"], errors="coerce"
+        ).astype("Int64")
 
         df["vendor_id"] = pd.to_numeric(df["vendor_id"], errors="coerce").astype("Int64")
         df["ratecode_id"] = pd.to_numeric(df["ratecode_id"], errors="coerce").astype("Int64")
@@ -144,7 +163,7 @@ def materialize():
             "tolls_amount",
             "improvement_surcharge",
             "total_amount",
-            "congestion_surcharge"
+            "congestion_surcharge",
         ]
 
         for col in numeric_cols:
@@ -162,8 +181,8 @@ def materialize():
             month_end = pd.Timestamp(year=year, month=month + 1, day=1)
 
         df = df[
-            (df["pickup_datetime"] >= month_start) &
-            (df["pickup_datetime"] < month_end)
+            (df["pickup_datetime"] >= month_start)
+            & (df["pickup_datetime"] < month_end)
         ]
 
         df = df[df["dropoff_datetime"] >= df["pickup_datetime"]]
@@ -171,16 +190,14 @@ def materialize():
         if "trip_distance" in df.columns:
             df = df[df["trip_distance"].isna() | (df["trip_distance"] >= 0)]
 
-        # -----------------------
-        # Metadata
-        # -----------------------
-
-        df["taxi_type"] = taxi_type
-        df["extracted_at"] = datetime.now(timezone.utc)
-
         dataframes.append(df)
 
     if not dataframes:
+        print("No data loaded")
         return pd.DataFrame()
 
-    return pd.concat(dataframes, ignore_index=True)
+    result = pd.concat(dataframes, ignore_index=True)
+
+    print(f"Rows loaded: {len(result)}")
+
+    return result
