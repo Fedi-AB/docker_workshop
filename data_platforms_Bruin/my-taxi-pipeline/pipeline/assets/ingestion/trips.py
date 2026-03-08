@@ -16,7 +16,23 @@ materialization:
 import os
 import json
 import pandas as pd
+import requests
+import io
 from datetime import datetime, timezone
+
+
+def download_parquet(url):
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    response = requests.get(url, headers=headers, timeout=300)
+
+    if response.status_code != 200:
+        raise ValueError(f"Download failed: HTTP {response.status_code}")
+
+    return pd.read_parquet(io.BytesIO(response.content), engine="pyarrow")
 
 
 def materialize():
@@ -86,7 +102,7 @@ def materialize():
         print(f"Downloading dataset: {url}")
 
         try:
-            df = pd.read_parquet(url, engine="pyarrow")
+            df = download_parquet(url)
 
         except Exception as e:
             print("FAILED loading dataset")
@@ -179,6 +195,10 @@ def materialize():
             (df["pickup_datetime"] >= month_start)
             & (df["pickup_datetime"] < month_end)
         ]
+
+        if df.empty:
+            print(f"{taxi_type} dataset empty after filtering")
+            continue
 
         dataframes.append(df)
 
