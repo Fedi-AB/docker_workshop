@@ -16,20 +16,34 @@ materialization:
 import os
 import json
 import pandas as pd
+import requests
+from io import BytesIO
 from datetime import datetime, timezone
 
 
 def materialize():
+
+    # -----------------------------------------------------------
+    # Determine which year and month to ingest from BRUIN context
+    # -----------------------------------------------------------
 
     start_date = pd.to_datetime(os.environ["BRUIN_START_DATE"])
 
     year = start_date.year
     month = start_date.month
 
+    # -----------------------------------------------------------
+    # Retrieve pipeline variables (taxi types to ingest)
+    # -----------------------------------------------------------
+
     vars_dict = json.loads(os.environ.get("BRUIN_VARS", "{}"))
     taxi_types = vars_dict.get("taxi_types", ["green"])
 
     dataframes = []
+
+    # -----------------------------------------------------------
+    # Canonical schema used to standardize all taxi datasets
+    # -----------------------------------------------------------
 
     canonical_columns = [
         "vendor_id",
@@ -58,26 +72,34 @@ def materialize():
         "extracted_at",
     ]
 
-    headers = {"User-Agent": "Mozilla/5.0"}
+    # -----------------------------------------------------------
+    # Loop through each taxi dataset (green, yellow, fhv...)
+    # -----------------------------------------------------------
 
     for taxi_type in taxi_types:
 
         url = f"https://d37ci6vzurychx.cloudfront.net/trip-data/{taxi_type}_tripdata_{year}-{month:02d}.parquet"
         print(f"Fetching: {url}")
 
+        # -----------------------------------------------------------
+        # Download dataset using requests to avoid CloudFront 403
+        # -----------------------------------------------------------
+
         try:
-            df = pd.read_parquet(
-                url,
-                storage_options=headers
-            )
+            response = requests.get(url)
+            response.raise_for_status()
+
+            df = pd.read_parquet(BytesIO(response.content))
+
         except Exception as e:
+
             print(f"Failed loading {url}")
             print(e)
             continue
 
-        # -----------------------
-        # Rename columns
-        # -----------------------
+        # -----------------------------------------------------------
+        # Normalize column names depending on taxi dataset
+        # -----------------------------------------------------------
 
         if taxi_type == "green":
 
@@ -113,30 +135,30 @@ def materialize():
                 "SR_Flag": "sr_flag"
             })
 
-        # -----------------------
-        # Add missing columns
-        # -----------------------
+        # -----------------------------------------------------------
+        # Add missing columns so all datasets match canonical schema
+        # -----------------------------------------------------------
 
         for col in canonical_columns:
             if col not in df.columns:
                 df[col] = None
 
-        # -----------------------
-        # Metadata
-        # -----------------------
+        # -----------------------------------------------------------
+        # Add ingestion metadata
+        # -----------------------------------------------------------
 
         df["taxi_type"] = taxi_type
         df["extracted_at"] = datetime.now(timezone.utc)
 
-        # -----------------------
-        # Select canonical schema
-        # -----------------------
+        # -----------------------------------------------------------
+        # Reorder columns to match canonical schema
+        # -----------------------------------------------------------
 
         df = df[canonical_columns]
 
-        # -----------------------
-        # Type normalization
-        # -----------------------
+        # -----------------------------------------------------------
+        # Normalize data types
+        # -----------------------------------------------------------
 
         df["pickup_datetime"] = pd.to_datetime(df["pickup_datetime"], errors="coerce")
         df["dropoff_datetime"] = pd.to_datetime(df["dropoff_datetime"], errors="coerce")
@@ -169,9 +191,9 @@ def materialize():
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-        # -----------------------
-        # DATA QUALITY FILTER
-        # -----------------------
+        # -----------------------------------------------------------
+        # Basic data quality filters
+        # -----------------------------------------------------------
 
         month_start = pd.Timestamp(year=year, month=month, day=1)
 
@@ -185,16 +207,29 @@ def materialize():
             & (df["pickup_datetime"] < month_end)
         ]
 
+        # Remove invalid trips
         df = df[df["dropoff_datetime"] >= df["pickup_datetime"]]
 
+        # Remove negative distances
         if "trip_distance" in df.columns:
             df = df[df["trip_distance"].isna() | (df["trip_distance"] >= 0)]
 
         dataframes.append(df)
 
+    # -----------------------------------------------------------
+    # Safety check: if no dataset was loaded
+    # -----------------------------------------------------------
+
     if not dataframes:
+
         print("No data loaded")
-        return pd.DataFrame()
+
+        # Return empty dataframe with schema
+        return pd.DataFrame(columns=canonical_columns)
+
+    # -----------------------------------------------------------
+    # Concatenate all taxi datasets
+    # -----------------------------------------------------------
 
     result = pd.concat(dataframes, ignore_index=True)
 
