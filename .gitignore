@@ -232,10 +232,15 @@ analytics_engineering/venv/
 analytics_engineering/target/
 analytics_engineering/dbt_packages/
 analytics_engineering/*.duckdb
-*.duckdb
 
+*.db
 *.duckdb
 *.duckdb.tmp/
 target/
 dbt_packages/
 logs/
+.bruin.yml
+logs/runs
+logs/*.log
+*.py[cod]
+logs/queries
