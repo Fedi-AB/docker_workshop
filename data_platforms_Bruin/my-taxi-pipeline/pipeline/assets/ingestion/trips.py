@@ -21,26 +21,31 @@ from datetime import datetime, timezone
 
 def materialize():
 
+    print("Starting ingestion job...")
+
     # -----------------------------------------------------------
     # Determine ingestion window using Bruin runtime context
     # -----------------------------------------------------------
 
     start_date = pd.to_datetime(os.environ["BRUIN_START_DATE"])
-
     year = start_date.year
     month = start_date.month
 
+    print(f"Ingestion window: {year}-{month:02d}")
+
     # -----------------------------------------------------------
-    # Retrieve pipeline variables (taxi types to ingest)
+    # Retrieve pipeline variables
     # -----------------------------------------------------------
 
     vars_dict = json.loads(os.environ.get("BRUIN_VARS", "{}"))
     taxi_types = vars_dict.get("taxi_types", ["green"])
 
+    print("Taxi types:", taxi_types)
+
     dataframes = []
 
     # -----------------------------------------------------------
-    # Canonical schema used to standardize all taxi datasets
+    # Canonical schema
     # -----------------------------------------------------------
 
     canonical_columns = [
@@ -71,31 +76,25 @@ def materialize():
     ]
 
     # -----------------------------------------------------------
-    # Iterate through each taxi dataset
+    # Loop datasets
     # -----------------------------------------------------------
 
     for taxi_type in taxi_types:
 
         url = f"https://nyc-tlc.s3.amazonaws.com/trip+data/{taxi_type}_tripdata_{year}-{month:02d}.parquet"
 
-        print(f"Fetching: {url}")
-
-        # -----------------------------------------------------------
-        # Load parquet dataset directly from S3
-        # -----------------------------------------------------------
+        print(f"Downloading dataset: {url}")
 
         try:
-
-            df = pd.read_parquet(url)
+            df = pd.read_parquet(url, engine="pyarrow")
 
         except Exception as e:
-
-            print(f"Failed loading {url}")
+            print("FAILED loading dataset")
             print(e)
             continue
 
         # -----------------------------------------------------------
-        # Normalize column names depending on taxi dataset format
+        # Rename columns
         # -----------------------------------------------------------
 
         if taxi_type == "green":
@@ -141,62 +140,33 @@ def materialize():
                 df[col] = None
 
         # -----------------------------------------------------------
-        # Add ingestion metadata
+        # Metadata
         # -----------------------------------------------------------
 
         df["taxi_type"] = taxi_type
         df["extracted_at"] = datetime.now(timezone.utc)
 
         # -----------------------------------------------------------
-        # Reorder columns according to canonical schema
+        # Reorder columns
         # -----------------------------------------------------------
 
         df = df[canonical_columns]
 
         # -----------------------------------------------------------
-        # Normalize datatypes
+        # Type normalization
         # -----------------------------------------------------------
 
         df["pickup_datetime"] = pd.to_datetime(df["pickup_datetime"], errors="coerce")
         df["dropoff_datetime"] = pd.to_datetime(df["dropoff_datetime"], errors="coerce")
 
-        df["pickup_location_id"] = pd.to_numeric(
-            df["pickup_location_id"], errors="coerce"
-        ).astype("Int64")
-
-        df["dropoff_location_id"] = pd.to_numeric(
-            df["dropoff_location_id"], errors="coerce"
-        ).astype("Int64")
-
-        df["vendor_id"] = pd.to_numeric(df["vendor_id"], errors="coerce").astype("Int64")
-        df["ratecode_id"] = pd.to_numeric(df["ratecode_id"], errors="coerce").astype("Int64")
-        df["passenger_count"] = pd.to_numeric(df["passenger_count"], errors="coerce").astype("Int64")
-        df["payment_type"] = pd.to_numeric(df["payment_type"], errors="coerce").astype("Int64")
-
-        numeric_cols = [
-            "trip_distance",
-            "fare_amount",
-            "extra",
-            "mta_tax",
-            "tip_amount",
-            "tolls_amount",
-            "improvement_surcharge",
-            "total_amount",
-            "congestion_surcharge",
-        ]
-
-        for col in numeric_cols:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
+        df["pickup_location_id"] = pd.to_numeric(df["pickup_location_id"], errors="coerce").astype("Int64")
+        df["dropoff_location_id"] = pd.to_numeric(df["dropoff_location_id"], errors="coerce").astype("Int64")
 
         # -----------------------------------------------------------
-        # Remove rows where incremental key is NULL
+        # Remove bad rows
         # -----------------------------------------------------------
 
         df = df[df["pickup_datetime"].notna()]
-
-        # -----------------------------------------------------------
-        # Data quality filters
-        # -----------------------------------------------------------
 
         month_start = pd.Timestamp(year=year, month=month, day=1)
 
@@ -210,29 +180,23 @@ def materialize():
             & (df["pickup_datetime"] < month_end)
         ]
 
-        df = df[df["dropoff_datetime"] >= df["pickup_datetime"]]
-
-        if "trip_distance" in df.columns:
-            df = df[df["trip_distance"].isna() | (df["trip_distance"] >= 0)]
-
         dataframes.append(df)
 
+        print(f"{taxi_type} rows loaded:", len(df))
+
     # -----------------------------------------------------------
-    # Safety check if no dataset was loaded
+    # Safety
     # -----------------------------------------------------------
 
     if not dataframes:
-
-        raise ValueError(
-            "No dataset could be downloaded. Check dataset availability or network access."
-        )
+        raise ValueError("No dataset downloaded.")
 
     # -----------------------------------------------------------
-    # Concatenate all datasets
+    # Final dataset
     # -----------------------------------------------------------
 
     result = pd.concat(dataframes, ignore_index=True)
 
-    print(f"Rows loaded: {len(result)}")
+    print("TOTAL ROWS:", len(result))
 
     return result
