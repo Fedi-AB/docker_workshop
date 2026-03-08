@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 def materialize():
 
     # -----------------------------------------------------------
-    # Determine which year and month to ingest from BRUIN context
+    # Determine ingestion window using Bruin runtime context
     # -----------------------------------------------------------
 
     start_date = pd.to_datetime(os.environ["BRUIN_START_DATE"])
@@ -73,7 +73,16 @@ def materialize():
     ]
 
     # -----------------------------------------------------------
-    # Loop through each taxi dataset (green, yellow, fhv...)
+    # HTTP headers to prevent CloudFront 403 errors
+    # -----------------------------------------------------------
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; BruinPipeline/1.0)",
+        "Accept": "*/*"
+    }
+
+    # -----------------------------------------------------------
+    # Iterate through each taxi dataset (green, yellow, fhv)
     # -----------------------------------------------------------
 
     for taxi_type in taxi_types:
@@ -82,11 +91,13 @@ def materialize():
         print(f"Fetching: {url}")
 
         # -----------------------------------------------------------
-        # Download dataset using requests to avoid CloudFront 403
+        # Download dataset using requests
+        # This avoids CloudFront restrictions in cloud environments
         # -----------------------------------------------------------
 
         try:
-            response = requests.get(url)
+
+            response = requests.get(url, headers=headers, timeout=120)
             response.raise_for_status()
 
             df = pd.read_parquet(BytesIO(response.content))
@@ -98,7 +109,7 @@ def materialize():
             continue
 
         # -----------------------------------------------------------
-        # Normalize column names depending on taxi dataset
+        # Normalize column names depending on taxi dataset format
         # -----------------------------------------------------------
 
         if taxi_type == "green":
@@ -136,7 +147,8 @@ def materialize():
             })
 
         # -----------------------------------------------------------
-        # Add missing columns so all datasets match canonical schema
+        # Ensure all canonical columns exist
+        # Missing columns are added as NULL
         # -----------------------------------------------------------
 
         for col in canonical_columns:
@@ -151,13 +163,13 @@ def materialize():
         df["extracted_at"] = datetime.now(timezone.utc)
 
         # -----------------------------------------------------------
-        # Reorder columns to match canonical schema
+        # Reorder columns according to canonical schema
         # -----------------------------------------------------------
 
         df = df[canonical_columns]
 
         # -----------------------------------------------------------
-        # Normalize data types
+        # Normalize datatypes for analytics compatibility
         # -----------------------------------------------------------
 
         df["pickup_datetime"] = pd.to_datetime(df["pickup_datetime"], errors="coerce")
@@ -192,7 +204,15 @@ def materialize():
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
         # -----------------------------------------------------------
-        # Basic data quality filters
+        # Remove rows where the incremental key is null
+        # Required for delete+insert incremental strategy
+        # -----------------------------------------------------------
+
+        df = df[df["pickup_datetime"].notna()]
+
+        # -----------------------------------------------------------
+        # Data quality filters
+        # Keep only trips within the ingestion month
         # -----------------------------------------------------------
 
         month_start = pd.Timestamp(year=year, month=month, day=1)
@@ -207,28 +227,27 @@ def materialize():
             & (df["pickup_datetime"] < month_end)
         ]
 
-        # Remove invalid trips
+        # Remove trips with invalid timestamps
         df = df[df["dropoff_datetime"] >= df["pickup_datetime"]]
 
-        # Remove negative distances
+        # Remove negative trip distances
         if "trip_distance" in df.columns:
             df = df[df["trip_distance"].isna() | (df["trip_distance"] >= 0)]
 
         dataframes.append(df)
 
     # -----------------------------------------------------------
-    # Safety check: if no dataset was loaded
+    # Safety check if no dataset could be downloaded
     # -----------------------------------------------------------
 
     if not dataframes:
 
-        print("No data loaded")
-
-        # Return empty dataframe with schema
-        return pd.DataFrame(columns=canonical_columns)
+        raise ValueError(
+            "No dataset could be downloaded. Check dataset availability or network access."
+        )
 
     # -----------------------------------------------------------
-    # Concatenate all taxi datasets
+    # Concatenate all datasets into one dataframe
     # -----------------------------------------------------------
 
     result = pd.concat(dataframes, ignore_index=True)
