@@ -16,23 +16,7 @@ materialization:
 import os
 import json
 import pandas as pd
-import requests
-import io
 from datetime import datetime, timezone
-
-
-def download_parquet(url):
-
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-
-    response = requests.get(url, headers=headers, timeout=300)
-
-    if response.status_code != 200:
-        raise ValueError(f"Download failed: HTTP {response.status_code}")
-
-    return pd.read_parquet(io.BytesIO(response.content), engine="pyarrow")
 
 
 def materialize():
@@ -97,12 +81,12 @@ def materialize():
 
     for taxi_type in taxi_types:
 
-        url = f"https://nyc-tlc.s3.amazonaws.com/trip-data/{taxi_type}_tripdata_{year}-{month:02d}.parquet"
+        url = f"https://d37ci6vzurychx.cloudfront.net/trip-data/{taxi_type}_tripdata_{year}-{month:02d}.parquet"
 
         print(f"Downloading dataset: {url}")
 
         try:
-            df = download_parquet(url)
+            df = pd.read_parquet(url, engine="pyarrow")
 
         except Exception as e:
             print("FAILED loading dataset")
