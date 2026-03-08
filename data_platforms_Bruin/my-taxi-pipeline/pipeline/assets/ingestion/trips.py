@@ -81,7 +81,7 @@ def materialize():
 
     for taxi_type in taxi_types:
 
-        url = f"https://nyc-tlc.s3.amazonaws.com/trip+data/{taxi_type}_tripdata_{year}-{month:02d}.parquet"
+        url = f"https://nyc-tlc.s3.amazonaws.com/trip-data/{taxi_type}_tripdata_{year}-{month:02d}.parquet"
 
         print(f"Downloading dataset: {url}")
 
