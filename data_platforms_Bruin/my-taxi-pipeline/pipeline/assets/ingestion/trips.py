@@ -16,7 +16,25 @@ materialization:
 import os
 import json
 import pandas as pd
+import requests
+import io
 from datetime import datetime, timezone
+
+
+def download_dataset(url):
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+        "Accept": "*/*",
+        "Connection": "keep-alive"
+    }
+
+    response = requests.get(url, headers=headers, timeout=300)
+
+    if response.status_code != 200:
+        raise ValueError(f"Download failed: HTTP {response.status_code}")
+
+    return pd.read_parquet(io.BytesIO(response.content), engine="pyarrow")
 
 
 def materialize():
@@ -24,20 +42,22 @@ def materialize():
     print("Starting ingestion job...")
 
     # -----------------------------------------------------------
-    # Determine ingestion window using Bruin runtime context
+    # Bruin ingestion window
     # -----------------------------------------------------------
 
     start_date = pd.to_datetime(os.environ["BRUIN_START_DATE"])
+
     year = start_date.year
     month = start_date.month
 
     print(f"Ingestion window: {year}-{month:02d}")
 
     # -----------------------------------------------------------
-    # Retrieve pipeline variables
+    # Pipeline variables
     # -----------------------------------------------------------
 
     vars_dict = json.loads(os.environ.get("BRUIN_VARS", "{}"))
+
     taxi_types = vars_dict.get("taxi_types", ["green"])
 
     print("Taxi types:", taxi_types)
@@ -86,11 +106,14 @@ def materialize():
         print(f"Downloading dataset: {url}")
 
         try:
-            df = pd.read_parquet(url, engine="pyarrow")
+
+            df = download_dataset(url)
 
         except Exception as e:
+
             print("FAILED loading dataset")
             print(e)
+
             continue
 
         # -----------------------------------------------------------
@@ -132,7 +155,7 @@ def materialize():
             })
 
         # -----------------------------------------------------------
-        # Ensure all canonical columns exist
+        # Ensure schema
         # -----------------------------------------------------------
 
         for col in canonical_columns:
@@ -147,7 +170,7 @@ def materialize():
         df["extracted_at"] = datetime.now(timezone.utc)
 
         # -----------------------------------------------------------
-        # Reorder columns
+        # Column order
         # -----------------------------------------------------------
 
         df = df[canonical_columns]
@@ -163,7 +186,7 @@ def materialize():
         df["dropoff_location_id"] = pd.to_numeric(df["dropoff_location_id"], errors="coerce").astype("Int64")
 
         # -----------------------------------------------------------
-        # Remove bad rows
+        # Remove invalid rows
         # -----------------------------------------------------------
 
         df = df[df["pickup_datetime"].notna()]
